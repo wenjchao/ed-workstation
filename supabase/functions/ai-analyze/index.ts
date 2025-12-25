@@ -1,38 +1,4 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
-
-// Setup type definitions for built-in Supabase Runtime APIs
-import "jsr:@supabase/functions-js/edge-runtime.d.ts"
-
-console.log("Hello from Functions!")
-
-Deno.serve(async (req) => {
-  const { name } = await req.json()
-  const data = {
-    message: `Hello ${name}!`,
-  }
-
-  return new Response(
-    JSON.stringify(data),
-    { headers: { "Content-Type": "application/json" } },
-  )
-})
-
-/* To invoke locally:
-
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
-
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/ai-analyze' \
-    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
-    --header 'Content-Type: application/json' \
-    --data '{"name":"Functions"}'
-
-*/
-
-// supabase/functions/ai-analyze/index.ts
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -40,8 +6,10 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
+  // CORS preflight
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
@@ -58,16 +26,32 @@ serve(async (req) => {
   }
 
   try {
-    // ✅ 這裡假設前端 body 直接送 patientContext（推薦）
+    // 你的前端 invoke body: patientContext，所以這裡直接讀整包
     const patientContext = await req.json();
 
     const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: `請只回傳 JSON：\n${JSON.stringify(patientContext)}` }] }],
+          contents: [
+            {
+              parts: [
+                {
+                  text: `你是一位專業的急診科醫師助理 AI。請只回傳 JSON，不要多餘文字。
+格式：
+{
+  "diagnoses":[{"name":"診斷","prob":0,"reason":"原因"}],
+  "recommendations":[{"code":"代碼","name":"醫令","reason":"理由"}]
+}
+
+病人資料：${JSON.stringify(patientContext)}`,
+                },
+              ],
+            },
+          ],
+          // ✅ 注意：是 responseMimeType (camelCase)
           generationConfig: { responseMimeType: "application/json" },
         }),
       },
@@ -75,6 +59,7 @@ serve(async (req) => {
 
     const data = await resp.json();
 
+    // Gemini 429/401/403 會在這裡被回傳給前端
     if (!resp.ok) {
       return new Response(JSON.stringify({ error: data?.error ?? data }), {
         status: resp.status,
@@ -84,14 +69,15 @@ serve(async (req) => {
 
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!raw) {
-      return new Response(JSON.stringify({ error: "Unexpected response", raw: data }), {
+      return new Response(JSON.stringify({ error: "Unexpected Gemini response", raw: data }), {
         status: 502,
         headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
-    // ✅ 回前端乾淨的 AiSuggestion JSON
+    // 解析 AI JSON
     const result = JSON.parse(raw);
+
     return new Response(JSON.stringify(result), {
       headers: { ...cors, "Content-Type": "application/json" },
     });
@@ -102,4 +88,3 @@ serve(async (req) => {
     });
   }
 });
-
