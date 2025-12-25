@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
 
 // --- 資料型別定義 ---
 interface Note {
@@ -46,18 +47,43 @@ export default function App() {
 
   // --- 自動存檔 ---
   useEffect(() => {
-    localStorage.setItem('er-notes', JSON.stringify(notes));
-    localStorage.setItem('er-orders', JSON.stringify(orders));
-  }, [notes, orders]);
+    const fetchNotes = async () => {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .order('id', { ascending: false }); // 讓最新的在上面
+      
+      if (data) setNotes(data);
+      if (error) console.error('抓取失敗:', error);
+    };
+
+    fetchNotes();
+  }, []);
 
   // --- 病歷操作 ---
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     if (!editingNote) return;
-    if (notes.find(n => n.id === editingNote.id)) {
-      setNotes(notes.map(n => n.id === editingNote.id ? editingNote : n));
+
+    if (editingNote.id !== 0) {
+      // 編輯舊資料
+      await supabase
+        .from('notes')
+        .update({ 
+          title: editingNote.title, 
+          content: editingNote.content, 
+          type: editingNote.type 
+        })
+        .eq('id', editingNote.id);
     } else {
-      setNotes([{ ...editingNote, id: Date.now() }, ...notes]);
+      // 新增資料 (移除 id 讓資料庫自動生成)
+      const { id, ...newNoteWithoutId } = editingNote;
+      await supabase.from('notes').insert([newNoteWithoutId]);
     }
+
+    // 儲存完後重新抓取最新資料
+    const { data } = await supabase.from('notes').select('*').order('id', { ascending: false });
+    if (data) setNotes(data);
+    
     setEditingNote(null);
   };
 
