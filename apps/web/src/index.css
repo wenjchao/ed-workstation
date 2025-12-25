@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+/* 這是為了確保你的網頁跟 App 一樣，不會有上下滾動條，且底色全滿 */
+@layer base {
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* 防止出現不必要的滾動條 */
+    background-color: #0f172a; /* 這是 Slate-900，深藍色底 */
+  }
+}
