@@ -104,27 +104,37 @@ export default function App() {
   };
 
   // --- AI 模擬分析 ---
-  const runAiAnalysis = () => {
+  const runAiAnalysis = async () => {
+    if (isAiLoading) return;
     setIsAiLoading(true);
     setAiResult(null);
-    // 模擬 AI 延遲
-    setTimeout(() => {
-      const mockResult: AiSuggestion = {
-        diagnoses: [
-          { name: "Acute Myocardial Infarction", prob: 85, reason: "基於胸痛持續與年齡風險" },
-          { name: "Aortic Dissection", prob: 10, reason: "需經影像排除" },
-          { name: "GERD", prob: 5, reason: "症狀不典型但不能排除" }
-        ],
-        recommendations: [
-          { code: "BLOOD002", name: "Troponin-I serial", reason: "追蹤心肌酶變化" },
-          { code: "IMG005", name: "Chest CT with contrast", reason: "排除主動脈剝離" },
-          { code: "MED001", name: "Aspirin 300mg PO", reason: "AMI 標準首選用藥" }
-        ]
-      };
-      setAiResult(mockResult);
+
+    const patientContext = {
+      notes: notes.map(n => ({ type: n.type, title: n.title, content: n.content })),
+      results: "WBC 15.2, CRP 8.5, Troponin-I 0.450",
+    };
+
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-analyze", {
+        body: patientContext,
+      });
+
+      if (error) {
+        console.error("Function error:", error);
+        alert("AI 分析失敗（Function）：" + error.message);
+        return;
+      }
+
+      setAiResult(data);
+    } catch (e) {
+      console.error(e);
+      alert("AI 連線失敗");
+    } finally {
       setIsAiLoading(false);
-    }, 1500);
+    }
   };
+
+
 
   const applyAiOrders = () => {
     const recommended = aiResult?.recommendations.filter(r => selectedAiOrders.includes(r.code)) || [];
